@@ -36,6 +36,7 @@ namespace WhistlePOC
         MaterialPropertyBlock tint;
         PooledSwordGraphic trail, perfect;
         Vector3 cameraHome;
+        NeonArt neon;
         public void Initialize(WhistleGame game)
         {
             tint = new MaterialPropertyBlock();
@@ -47,6 +48,7 @@ namespace WhistlePOC
             postContours.Clear(); postHomes.Clear();
             foreach (var post in posts) { postContours.Add(post.GetComponentsInChildren<LineRenderer>()); postHomes.Add(post.localPosition); }
             foreach (var mesh in GetComponentsInChildren<MeshRenderer>()) mesh.enabled = false;
+            neon = new NeonArt(this);
             RenderNow();
         }
         void ColorLine(LineRenderer line, Color color)
@@ -72,7 +74,10 @@ namespace WhistlePOC
         public void RenderNow()
         {
             if (Game == null || View == null || pool == null || !Application.isPlaying) return;
-            bool visible = Game.Revealed; View.backgroundColor = new Color(.006f, .006f, .006f);
+            bool visible = Game.Revealed;
+            float swing = Game.Cuts.Count > 0 ? Mathf.Sin(Mathf.Clamp01(Game.Cuts[Game.Cuts.Count - 1].age / .25f) * Mathf.PI) : 0;
+            neon?.Tick(Game, swing);
+            View.transform.position = cameraHome + View.transform.forward * swing * .16f;
             VisibleEnemyCount = AttackableEnemyCount = 0;
             if (Game.State != JourneyState.Walking && Game.State != JourneyState.Paused) { if (pool.ActiveCount > 0) ReleaseAllVisuals(); return; }
             foreach (var e in Game.Enemies)
@@ -80,7 +85,8 @@ namespace WhistlePOC
                 if (!enemies.TryGetValue(e, out var view)) { view = pool.Spawn(EnemyPrefab(e), transform).GetComponent<PooledEnemyVisual>(); enemies.Add(e, view); }
                 view.transform.position = EnemyWorld(e); view.HideBody();
                 bool inRange = InSwordRange(e); float echo = Game.EchoStrength(EnemyWorld(e));
-                foreach (var contour in view.contours) { contour.enabled = echo > .03f; ColorLine(contour, new Color(1, 1, 1, echo * (inRange ? .95f : .6f))); }
+                Color enemyColor = e.hp > 1 ? NeonArt.Yellow : e.ranged ? NeonArt.Pink : NeonArt.Cyan;
+                foreach (var contour in view.contours) { contour.enabled = echo > .03f; var c = enemyColor * 2.4f; c.a = echo * (inRange ? .95f : .6f); ColorLine(contour, c); }
                 if (echo > .03f) VisibleEnemyCount++;
                 if (visible && echo > .03f && inRange && Game.State == JourneyState.Walking) AttackableEnemyCount++;
                 float proximity = Mathf.InverseLerp(28, 2.8f, EnemyDistance(e));
@@ -91,7 +97,9 @@ namespace WhistlePOC
                 for (int ring = 0; ring < view.footsteps.Length; ring++)
                 {
                     var wave = view.footsteps[ring]; wave.enabled = !visible && ring == Mathf.Max(0, e.waveIndex) && (warning || (e.waveIndex >= 0 && e.pulse > .015f));
-                    CircleWave(wave, Vector3.up * .9f, Mathf.Lerp(.08f, Mathf.Lerp(.8f, 1.15f, proximity), growth), Mathf.Lerp(.027f, .038f, proximity) * (1 - growth * .45f), warning ? new Color(1, 1, 1, envelope) : new Color(.65f, .65f, .65f, envelope * Mathf.Lerp(.48f, .95f, proximity)));
+                    var waveColor = warning ? NeonArt.Pink * 2.5f : NeonArt.Cyan * 1.4f;
+                    waveColor.a = envelope * Mathf.Lerp(.48f, .95f, proximity);
+                    CircleWave(wave, Vector3.up * .9f, Mathf.Lerp(.08f, Mathf.Lerp(.8f, 1.15f, proximity), growth), Mathf.Lerp(.027f, .038f, proximity) * (1 - growth * .45f), waveColor);
                 }
                 for (int ring = 0; ring < view.falseFootsteps.Length; ring++)
                 {
@@ -107,7 +115,7 @@ namespace WhistlePOC
                 view.transform.position = shot.position;
                 foreach (var body in view.body) { body.enabled = false; body.transform.localRotation = Quaternion.Euler(0, 0, shot.age * 600 + (body.name == "Star" ? 45 : 0)); }
                 float echo = Game.EchoStrength(shot.position);
-                foreach (var contour in view.contours) { contour.enabled = visible || echo > .03f; ColorLine(contour, new Color(1, 1, 1, visible ? .55f + echo * .4f : echo * .7f)); }
+                foreach (var contour in view.contours) { contour.enabled = visible || echo > .03f; ColorLine(contour, new Color(2.4f, .2f, 1.2f, visible ? .55f + echo * .4f : echo * .7f)); }
                 bool inRange = new Vector2(shot.position.x, shot.position.z).magnitude <= Game.swordReach;
                 var wave = view.soundWave; wave.enabled = !visible; wave.transform.rotation = View.transform.rotation;
                 float phase = Mathf.Repeat(shot.age * 2.5f, 1); float radius = Mathf.Lerp(.16f, .55f, phase);
@@ -130,12 +138,11 @@ namespace WhistlePOC
                 if (radius <= 0 || radius > range) continue;
                 if (!scans.TryGetValue(emission, out var ring)) { ring = pool.Spawn(scanWavePrefab, transform).GetComponent<LineRenderer>(); scans.Add(emission, ring); }
                 ring.enabled = true; ring.transform.localPosition = new Vector3(0, .03f, 0); ring.transform.localScale = new Vector3(radius, 1, radius);
-                ColorLine(ring, new Color(.55f, .55f, .55f, Mathf.Clamp01(1 - radius / Mathf.Max(1, range)) * .32f));
+                ColorLine(ring, new Color(.2f, 2.2f, 2.6f, Mathf.Clamp01(1 - radius / Mathf.Max(1, range)) * .65f));
             }
             removedScans.Clear(); foreach (float emission in scans.Keys) if (!Game.EchoPulses.Contains(emission) || (Game.Clock - emission) * Game.echoSpeed > Game.EchoRange(emission)) removedScans.Add(emission);
             foreach (float emission in removedScans) { pool.Return(scans[emission].gameObject); scans.Remove(emission); }
             SyncSwordEffects();
-            float swing = Game.Cuts.Count > 0 ? Mathf.Sin(Mathf.Clamp01(Game.Cuts[Game.Cuts.Count - 1].age / .25f) * Mathf.PI) : 0;
             float angle = Game.SwordDragging ? Mathf.Atan2(Game.SwordDirection.y, Game.SwordDirection.x) * Mathf.Rad2Deg - 90 : -25;
             if (Game.swordMode == SwordMode.ClickAll) angle -= swing * 100;
             var rotation = Quaternion.Euler(0, 0, angle); var position = new Vector3(.40f, -.42f, .65f);
@@ -143,7 +150,6 @@ namespace WhistlePOC
             if (Game.SwordDragging) { var screen = Game.ScreenPoint(Game.Cursor); var tip = View.transform.InverseTransformPoint(View.ScreenToWorldPoint(new Vector3(screen.x, screen.y, .65f))); position = tip - rotation * new Vector3(0, .64f, 0); }
             float follow = 1 - Mathf.Exp(-Time.unscaledDeltaTime * 32);
             sword.localRotation = Quaternion.Slerp(sword.localRotation, rotation, follow); sword.localPosition = Vector3.Lerp(sword.localPosition, position, follow);
-            View.transform.position = cameraHome + View.transform.forward * swing * .16f;
         }
         void SyncSwordEffects()
         {
@@ -166,5 +172,6 @@ namespace WhistlePOC
             VisibleEnemyCount = AttackableEnemyCount = 0;
         }
         void LateUpdate() { RenderNow(); }
+        void OnDestroy() { neon?.Dispose(); }
     }
 }

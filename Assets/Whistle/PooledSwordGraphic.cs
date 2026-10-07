@@ -50,7 +50,11 @@ namespace WhistlePOC
                 Line(Cut.to + d * (15 + Cut.age * 70), Cut.to + d * (30 + Cut.age * 110), 2, Tint(alpha));
             }
         }
-        Color Tint(float alpha) { return new Color(glowColor.r, glowColor.g, glowColor.b, alpha * glowColor.a); }
+        Color Tint(float alpha)
+        {
+            Color color = kind == EffectKind.PerfectRing ? NeonArt.Yellow : kind == EffectKind.DragTrail ? NeonArt.Cyan : NeonArt.Pink;
+            return new Color(color.r * glowColor.r, color.g * glowColor.g, color.b * glowColor.b, alpha * glowColor.a);
+        }
         void Line(Vector2 a, Vector2 b, float width, Color c)
         {
             var n = new Vector2(-(b-a).y,(b-a).x).normalized * width/2; int i=mesh.currentVertCount;
