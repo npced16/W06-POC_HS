@@ -50,6 +50,8 @@ namespace WhistlePOC.Editor
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
             var scene = File.Exists(ScenePath) ? EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single) : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var duel = UnityEngine.Object.FindFirstObjectByType<BossDuel>();
+            if (duel != null) { Selection.activeGameObject = duel.gameObject; return; }
             if (Camera.main == null)
             {
                 var camera = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener)); camera.tag = "MainCamera";
